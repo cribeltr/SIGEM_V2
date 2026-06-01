@@ -1571,173 +1571,137 @@ async function subirPlantillaMP(file, year, monthIdx){
   }
 }
 function exportExcel(){
-  if(typeof XLSX === 'undefined'){ toast('Parser Excel no disponible','error'); return; }
+  // Estructura pensada para TRABAJAR SIN LA APLICACIÓN: portada con indicadores,
+  // leyenda e instrucciones; hojas con filtros automáticos y columnas para llenar a mano.
   state.equipos.forEach(recalcEstadoEquipo);
-  const wb = XLSX.utils.book_new();
-  const year = new Date().getFullYear();
-  const hoy = hoyLocal();
-  // Hoja simple con anchos. Las tablas además llevan autofiltro para ordenar/buscar en Excel.
-  const addPlain = (ws, nombre, cols) => { if(cols) ws['!cols']=cols; XLSX.utils.book_append_sheet(wb, ws, nombre); };
-  const tabla = (rows, nombre, cols) => {
-    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{' ':'(sin datos)'}]);
-    if(ws['!ref']) ws['!autofilter'] = {ref: ws['!ref']};
-    addPlain(ws, nombre, cols);
-  };
+  const hoy=hoyLocal(), ahora=new Date().toLocaleString('es-CL');
+  const YEAR=new Date().getFullYear(), MES=new Date().getMonth();
+  const wb=XLSX.utils.book_new();
+  function addSheet(name, aoa, opts){
+    opts=opts||{};
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    if(opts.cols) ws['!cols']=opts.cols;
+    if(opts.filter) ws['!autofilter']={ref:opts.filter};
+    ws['!freeze']={xSplit:0, ySplit:opts.freezeRow||0};
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  }
+  const eqs=state.equipos.slice();
+  const op=eqs.filter(e=>e.estado==='operativo');
+  const noOp=eqs.filter(e=>e.estado==='no_operativo');
+  const enST=eqs.filter(e=>e.estado==='en_servicio_tecnico');
+  const baja=eqs.filter(e=>e.estado==='baja');
+  const alerta30=eqs.filter(e=>['no_operativo','en_servicio_tecnico'].includes(e.estado)&&diasEnEstado(e)>30);
+  const pendAb=state.pendientes.filter(p=>!p.anulado&&p.estado!=='cerrado');
+  const pendVenc=pendAb.filter(p=>p.fechaComp&&p.fechaComp<hoy);
+  const ciclosAb=state.ciclos.filter(c=>c.estado==='abierto');
+  const borr=state.eventos.filter(e=>e.oficial!=='Sí'&&!e.anulado);
+  const conf=(state.conflictos||[]).filter(c=>c.estado==='pendiente'||c.estado==='pospuesto');
+  const mpProg=eqs.filter(e=>e.estado!=='baja'&&mpProgramadaEnMes(e, NUM_MES[MES]));
+  const mpEjec=mpProg.filter(e=>mpDelMesEjecutada(e, YEAR, MES));
+  const pctMes=mpProg.length?Math.round(mpEjec.length/mpProg.length*100):0;
 
-  // Mapeo de un evento a fila (se usa para los tuyos y para los automáticos)
-  const mapEv = e => ({
-    'ID': e.id, 'Fecha del evento': fmtFecha(e.fecha), 'Fecha registro': fmtFecha(e.fechaReg),
-    'N° Inv.': e.inv, 'Equipo': e.equipo||'', 'Servicio': e.servicio||'',
-    'Tipo': e.tipo, 'Resultado': e.resultado||'', 'Estado equipo': e.estado||'',
-    'Ejecutor': e.ejecutor||'', 'Folio SIGEM': e.folio||'',
-    'N° Envío': e.nEnvio||'', 'N° OC': e.nOC||'', 'N° Cotización': e.nCotiz||'',
-    'Empresa': e.empresa||'', 'Técnico': e.tecnico||'',
-    'Observación': e.obs||'', 'Oficial': e.oficial||'No', 'Creado por': e.creadoPor||''
+  // ===== 1) RESUMEN (portada) =====
+  const R=[];
+  R.push(['SIGEM · Gestión de Equipos Biomédicos Críticos']);
+  R.push(['Hospital HHHA — Documento de trabajo para uso SIN la aplicación']);
+  R.push(['Generado', ahora]);
+  R.push([]);
+  R.push(['INDICADORES GENERALES','']);
+  R.push(['Total de equipos', eqs.length]);
+  R.push(['Operativos', op.length]);
+  R.push(['No operativos', noOp.length]);
+  R.push(['En servicio técnico', enST.length]);
+  R.push(['Dados de baja', baja.length]);
+  R.push(['Alertas (>30 días sin avance)', alerta30.length]);
+  R.push(['Pendientes abiertos', pendAb.length]);
+  R.push(['   · de ellos, vencidos', pendVenc.length]);
+  R.push(['Ciclos correctivos abiertos', ciclosAb.length]);
+  R.push(['Eventos en borrador (sin oficializar)', borr.length]);
+  R.push([]);
+  R.push(['MANTENCIÓN PREVENTIVA — '+MESES[MES]+' '+YEAR,'']);
+  R.push(['Programadas en el mes', mpProg.length]);
+  R.push(['Ejecutadas', mpEjec.length]);
+  R.push(['Cumplimiento', pctMes+'%']);
+  R.push([]);
+  R.push(['RESUMEN POR SERVICIO']);
+  R.push(['Servicio','Total','Operativos','No operativos','En serv. técnico','Pendientes']);
+  [...new Set(eqs.map(e=>e.servicio).filter(Boolean))].sort().forEach(s=>{
+    const es=eqs.filter(e=>e.servicio===s);
+    R.push([s, es.length, es.filter(e=>e.estado==='operativo').length, es.filter(e=>e.estado==='no_operativo').length, es.filter(e=>e.estado==='en_servicio_tecnico').length, state.pendientes.filter(p=>!p.anulado&&p.estado!=='cerrado'&&p.servicio===s).length]);
   });
-  const colsEv = [{wch:5},{wch:14},{wch:14},{wch:13},{wch:22},{wch:20},{wch:18},{wch:9},{wch:13},{wch:20},{wch:21},{wch:8},{wch:13},{wch:13},{wch:20},{wch:16},{wch:42},{wch:8},{wch:12}];
+  R.push([]);
+  R.push(['LEYENDA · ESTADO DEL EQUIPO']);
+  R.push(['Operativo','Funciona normalmente']);
+  R.push(['No operativo','Fuera de servicio']);
+  R.push(['En servicio técnico','En reparación externa / fuera del hospital']);
+  R.push(['Baja','Equipo dado de baja']);
+  R.push([]);
+  R.push(['LEYENDA · CÓDIGOS DE MP (columnas de meses en la hoja "Plan MP")']);
+  R.push(['X / P','MP programada (pendiente de ejecutar)']);
+  R.push(['Si','MP realizada']);
+  R.push(['C1 a C8','Reprogramada por causal (ver el detalle en "Bitácora")']);
+  R.push(['FS','Equipo fuera de servicio ese mes']);
+  R.push(['NU','Equipo no ubicado']);
+  R.push(['Baja','Equipo dado de baja']);
+  R.push([]);
+  R.push(['CÓMO USAR ESTE ARCHIVO']);
+  R.push(['• "Plan MP": registra a mano en cada mes la ejecución (escribe "Si") o el código que corresponda.']);
+  R.push(['• "Cola de trabajo": usa la columna HECHO (marca una X) para ir cerrando los pendientes.']);
+  R.push(['• Todas las hojas tienen filtros en la fila de encabezado para ordenar y buscar.']);
+  R.push(['• Para volver a cargar avances en la app, usa Importar con tu backup JSON (no este Excel).']);
+  addSheet('Resumen', R, {cols:[{wch:44},{wch:30},{wch:14},{wch:16},{wch:18},{wch:14}]});
 
-  // Eventos automáticos (generados al conciliar el maestro) van a una hoja OCULTA.
-  // Lo que el usuario registró (incluidos borradores) va a la hoja visible "Eventos".
-  const esAuto = e => e.origen === 'conciliacion_auto' || e.origen === 'conciliacion';
-  const evNoAnul = state.eventos.filter(e=>!e.anulado);
-  const evMios = evNoAnul.filter(e=>!esAuto(e));
-  const evAuto = evNoAnul.filter(esAuto);
-  const pendAb = state.pendientes.filter(p=>!p.anulado && p.estado!=='cerrado');
-  const ciclosAb = state.ciclos.filter(c=>c.estado==='abierto');
-  const borr = evMios.filter(e=>e.oficial!=='Sí');
+  // ===== 2) EQUIPOS =====
+  const eqHead=['N° Inv.','N° Carpeta','Familia','Equipo','Marca','Modelo','Serie','Servicio','Unidad','Ubicación','Procedencia','Año','VUR','Clasificación','Frecuencia MP','Estado actual','Días en estado','Encargado','Pend. abiertos','Ciclo abierto'];
+  const eqRows=eqs.map(e=>[e.inv, e.carpeta==null?'':e.carpeta, e.fam||'', e.equipo||'', e.marca||'', e.modelo||'', e.serie||'', e.servicio||'', e.unidad||'', e.ubic||'', e.proc||'', e.ano==null?'':e.ano, e.vur==null?'':e.vur, e.clasif||'', e.freq||'', ESTADO_LABEL[e.estado]||e.estado, diasEnEstado(e), encargadoDe(e)||'', pendientesDe(e.inv).filter(p=>p.estado!=='cerrado').length, (ciclosAbiertosDe(e.inv)[0]||{}).folio||'']);
+  addSheet('Equipos', [eqHead, ...eqRows], {freezeRow:1, filter:'A1:T'+(eqRows.length+1),
+    cols:[{wch:12},{wch:10},{wch:16},{wch:22},{wch:16},{wch:22},{wch:16},{wch:22},{wch:18},{wch:14},{wch:12},{wch:7},{wch:6},{wch:12},{wch:16},{wch:16},{wch:9},{wch:24},{wch:8},{wch:14}]});
 
-  // 0. Léeme — guía para trabajar con el archivo sin el programa
-  const leeme = [
-    ['HHHA — Gestión de equipos biomédicos críticos'],
-    ['Exportado el', hoy],
-    [],
-    ['RESUMEN'],
-    ['Equipos en catálogo', state.equipos.length],
-    ['Eventos registrados por ti', evMios.length],
-    ['   · de ellos, borradores por oficializar', borr.length],
-    ['Eventos automáticos (del maestro)', evAuto.length],
-    ['Pendientes por resolver', pendAb.length],
-    ['Ciclos correctivos abiertos', ciclosAb.length],
-    [],
-    ['QUÉ CONTIENE CADA HOJA'],
-    ['Por resolver', 'Lo accionable: pendientes abiertos, ciclos abiertos y borradores. Pensada para imprimir y trabajar en papel.'],
-    ['Eventos', 'Lo que TÚ registraste (incluye borradores; mira la columna Oficial).'],
-    ['Equipos', 'Catálogo de equipos con su estado actual.'],
-    ['PMP_'+year, 'Programación anual de mantención (espejo de tu carta gantt / maestro).'],
-    ['Registro_MP-'+year, 'Programado (P) y Realizado (R) de la MP, por mes.'],
-    ['Pendientes', 'Todos los pendientes con su estado (No iniciado / En proceso / Resuelto).'],
-    ['Ciclos correctivos', 'Ciclos de falla, con apertura y cierre.'],
-    ['Eventos (automáticos)', 'HOJA OCULTA. Eventos que generó el programa al conciliar el maestro: NO los registraste tú. Para verla en Excel: clic derecho sobre una pestaña → Mostrar.'],
-  ];
-  addPlain(XLSX.utils.aoa_to_sheet(leeme), 'Léeme', [{wch:38},{wch:82}]);
-
-  // 1. Por resolver — para imprimir
-  const prRows = [];
-  pendAb.slice().sort((a,b)=>(a.fechaComp||'9999').localeCompare(b.fechaComp||'9999')).forEach(p=>prRows.push({
-    'Qué': 'Pendiente', 'Estado': ESTADO_PEND_LABEL[p.estado]||p.estado,
-    'N° Inv.': p.inv, 'Equipo': p.equipo||'', 'Servicio': p.servicio||'',
-    'Detalle': (TIPO_PENDIENTE[p.tipo]||p.tipo)+(p.desc?(' — '+p.desc):''), 'Ejecutor': p.ejecutor||'',
-    'Compromiso': fmtFecha(p.fechaComp), 'Hecho': ''
-  }));
-  ciclosAb.forEach(c=>{ const eq=findEquipo(c.inv); prRows.push({
-    'Qué':'Ciclo abierto','Estado':'Abierto','N° Inv.':c.inv,'Equipo':eq?(eq.equipo||''):'','Servicio':eq?(eq.servicio||''):'',
-    'Detalle':'Folio '+(c.folio||''),'Ejecutor':c.ingenieroAsignado||'','Compromiso':'','Hecho':''}); });
-  borr.forEach(e=>prRows.push({
-    'Qué':'Borrador','Estado':'Por oficializar','N° Inv.':e.inv,'Equipo':e.equipo||'','Servicio':e.servicio||'',
-    'Detalle':e.tipo+(e.obs?(' — '+e.obs):''),'Ejecutor':e.ejecutor||'','Compromiso':fmtFecha(e.fecha),'Hecho':''}));
-  tabla(prRows, 'Por resolver', [{wch:12},{wch:15},{wch:13},{wch:22},{wch:20},{wch:46},{wch:20},{wch:12},{wch:8}]);
-
-  // 2. Eventos (lo que tú registraste)
-  tabla(evMios.map(mapEv), 'Eventos', colsEv);
-
-  // 3. Equipos
-  const equiposRows = state.equipos.map(e => ({
-    'N° Inv.': e.inv, 'N° Carpeta': e.carpeta||'', 'Serie': e.serie||'',
-    'Familia': e.fam||'', 'Equipo': e.equipo||'', 'Marca': e.marca||'', 'Modelo': e.modelo||'',
-    'Servicio': e.servicio||'', 'Unidad': e.unidad||'', 'Ubicación': e.ubic||'',
-    'Procedencia': e.proc||'', 'Año': e.ano||'', 'VUR': e.vur||'',
-    'Clasificación': e.clasif||'', 'Frecuencia MP': e.freq||'',
-    'Estado': ESTADO_LABEL[e.estado]||e.estado, 'Días en estado': diasEnEstado(e),
-    'Pendientes abiertos': pendientesDe(e.inv).filter(p=>p.estado!=='cerrado').length,
-    'Ciclo abierto': ciclosAbiertosDe(e.inv).length > 0 ? 'Sí' : 'No'
-  }));
-  tabla(equiposRows, 'Equipos', [{wch:13},{wch:9},{wch:14},{wch:16},{wch:22},{wch:16},{wch:18},{wch:22},{wch:18},{wch:18},{wch:12},{wch:6},{wch:6},{wch:12},{wch:13},{wch:14},{wch:12},{wch:10},{wch:11}]);
-
-  // 4. PMP_AAAA — espejo del maestro
-  const pmpHeader = ['Fam','ID','N° Carpeta','N° Inventario','Equipo','Servicio','Unidad','Ubicación','Procedencia','Marca','Modelo','Serie','Año Instalación','Vida Útil Residual','Clasificación','ENU / Baja','Observación','Frecuencia MP','Responsable MP',...MESES];
-  const pmpData = [pmpHeader];
-  state.equipos.forEach((e, i) => {
-    const row = [e.fam||'', i+1, e.carpeta||'', e.inv, e.equipo||'', e.servicio||'', e.unidad||'', e.ubic||'', e.proc||'', e.marca||'', e.modelo||'', e.serie||'', e.ano||'', e.vur||'', e.clasif||'', e.enu||'', '', e.freq||'', ''];
-    MESES.forEach(m => row.push((e.prog||{})[m] || ''));
-    pmpData.push(row);
+  // ===== 3) PLAN MP <YEAR> (carta gantt para seguimiento manual) =====
+  const mpHead=['N° Inv.','Equipo','Servicio','Frecuencia','Encargado', ...MESES];
+  const mpRows=eqs.filter(e=>e.estado!=='baja'&&MESES.some(m=>mpProgramadaEnMes(e,m))).map(e=>{
+    const cells=MESES.map(m=>{ const reg=(e.registro||{})[m]||{}; return reg.R || reg.P || (e.prog||{})[m] || ''; });
+    return [e.inv, e.equipo||'', e.servicio||'', e.freq||'', encargadoDe(e)||'', ...cells];
   });
-  addPlain(XLSX.utils.aoa_to_sheet(pmpData), `PMP_${year}`);
+  addSheet('Plan MP '+YEAR, [mpHead, ...mpRows], {freezeRow:1, filter:'A1:Q'+(mpRows.length+1),
+    cols:[{wch:12},{wch:22},{wch:20},{wch:16},{wch:24},...MESES.map(()=>({wch:6}))]});
 
-  // 5. Registro_MP-AAAA — espejo con P y R por mes
-  const regHeader2 = Array(19).fill('');
-  MESES.forEach(m=>{ regHeader2.push('P','R') });
-  const regHeaderMonths = Array(19).fill('');
-  MESES.forEach(m => { regHeaderMonths.push(m,''); });
-  regHeaderMonths[3] = 'N° Inventario';
-  const regData = [regHeaderMonths, regHeader2];
-  state.equipos.forEach((e, i) => {
-    const row = ['', i+1, e.carpeta||'', e.inv, e.equipo||'', e.servicio||'', e.unidad||'', e.ubic||'', e.proc||'', e.marca||'', e.modelo||'', e.serie||'', e.ano||'', e.vur||'', e.clasif||'', e.enu||'', '', e.freq||'', ''];
-    MESES.forEach(m => {
-      const reg = (e.registro||{})[m] || {};
-      const prog = (e.prog||{})[m] || '';
-      row.push(reg.P || prog || '', reg.R || '');
-    });
-    regData.push(row);
+  // ===== 4) COLA DE TRABAJO (accionable, con columna HECHO) =====
+  const ctHead=['Prioridad','Qué','Equipo','N° Inv.','Servicio','Detalle','Responsable','Fecha compromiso','Estado','HECHO'];
+  const ct=[];
+  pendAb.slice().sort((a,b)=>(a.fechaComp||'9999').localeCompare(b.fechaComp||'9999')).forEach(p=>{
+    const prio=(p.fechaComp&&p.fechaComp<hoy)?'VENCIDO':(p.fechaComp===hoy?'HOY':(p.fechaComp?'Próximo':'Sin fecha'));
+    ct.push([prio,'Pendiente', p.equipo||'', p.inv||'', p.servicio||'', p.desc||'', p.ejecutor||'', p.fechaComp?fmtFecha(p.fechaComp):'', ESTADO_PEND_LABEL[p.estado]||p.estado, '']);
   });
-  addPlain(XLSX.utils.aoa_to_sheet(regData), `Registro_MP-${year}`);
+  ciclosAb.forEach(c=>{ const e=findEquipo(c.inv); ct.push(['—','Ciclo abierto', (e&&e.equipo)||'', c.inv||'', (e&&e.servicio)||'', 'Folio '+c.folio+(c.descripcionInicial?(' · '+c.descripcionInicial):''), c.ingenieroAsignado||'', c.fechaApertura?fmtFecha(c.fechaApertura):'', 'Abierto', '']); });
+  borr.forEach(ev=>{ ct.push(['—','Borrador a oficializar', ev.equipo||'', ev.inv||'', ev.servicio||'', ev.tipo+(ev.obs?(' · '+ev.obs):''), ev.ejecutor||'', ev.fecha?fmtFecha(ev.fecha):'', 'Borrador', '']); });
+  addSheet('Cola de trabajo', [ctHead, ...ct], {freezeRow:1, filter:'A1:J'+(ct.length+1),
+    cols:[{wch:10},{wch:20},{wch:22},{wch:12},{wch:20},{wch:42},{wch:24},{wch:15},{wch:12},{wch:8}]});
 
-  // 6. Pendientes
-  const pendRows = state.pendientes.filter(p=>!p.anulado).map(p => ({
-    'ID': p.id, 'N° Inv.': p.inv, 'Equipo': p.equipo||'', 'Servicio': p.servicio||'',
-    'Tipo': TIPO_PENDIENTE[p.tipo]||p.tipo, 'Descripción': p.desc||'',
-    'Ejecutor': p.ejecutor||'',
-    'Fecha creación': fmtFecha(p.fechaCrea), 'Fecha compromiso': fmtFecha(p.fechaComp),
-    'Fecha cierre': fmtFecha(p.fechaCierre), 'Estado': ESTADO_PEND_LABEL[p.estado]||p.estado, 'Origen': p.origen||''
-  }));
-  tabla(pendRows, 'Pendientes', [{wch:5},{wch:13},{wch:22},{wch:20},{wch:18},{wch:42},{wch:20},{wch:14},{wch:15},{wch:13},{wch:13},{wch:14}]);
+  // ===== 5) BITÁCORA =====
+  const biHead=['Fecha','Tipo','N° Inv.','Equipo','Servicio','Resultado','Estado equipo','Ejecutor','Folio SIGEM','Oficial','Observación'];
+  const bi=state.eventos.filter(e=>!e.anulado).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).map(ev=>{
+    const estado=(ev.tipo==='Mantención preventiva'&&ev.resultado)?estadoMPFinal(ev.resultado,ev.estado):ev.estado;
+    return [ev.fecha?fmtFecha(ev.fecha):'', etiquetaTipoEvento(ev), ev.inv||'', ev.equipo||'', ev.servicio||'', ev.resultado||'', estado||'', ev.ejecutor||'', ev.folio||'', ev.oficial||'No', ev.obs||''];
+  });
+  addSheet('Bitácora', [biHead, ...bi], {freezeRow:1, filter:'A1:K'+(bi.length+1),
+    cols:[{wch:12},{wch:24},{wch:12},{wch:22},{wch:20},{wch:10},{wch:16},{wch:24},{wch:18},{wch:8},{wch:46}]});
 
-  // 7. Conflictos (si hay)
-  if(state.conflictos && state.conflictos.length > 0){
-    const confRows = state.conflictos.map(c => ({
-      'ID': c.id, 'Tipo': c.tipo, 'N° Inv.': c.inv, 'Estado': c.estado,
-      'Hoja': c.hoja||'', 'Mes': c.mes||'', 'Campo': c.campo||'',
-      'Valor programa': c.valorPrograma||'', 'Valor maestro': c.valorMaestro||'',
-      'Detectado': c.fechaDeteccion ? fmtFecha(c.fechaDeteccion.slice(0,10)) : '',
-      'Resuelto': c.fechaResolucion ? fmtFecha(c.fechaResolucion.slice(0,10)) : '',
-      'Acción aplicada': c.accionAplicada||'', 'Valor final': c.resolucionValor||''
-    }));
-    tabla(confRows, 'Conflictos', [{wch:5},{wch:14},{wch:13},{wch:12},{wch:9},{wch:6},{wch:8},{wch:16},{wch:16},{wch:12},{wch:12},{wch:16},{wch:12}]);
+  // ===== 6) CONCILIACIÓN (si hay diferencias) =====
+  if(conf.length){
+    const coHead=['Tipo','N° Inv.','Hoja','Mes','Campo','Valor programa','Valor maestro','Estado'];
+    const co=conf.map(c=>[nombreCampoConflicto?nombreCampoConflicto(c):c.tipo, c.inv||'', c.hoja||'', c.mes||'', c.campo||'', c.valorPrograma||'', c.valorMaestro||'', estadoConflictoLabel?estadoConflictoLabel(c.estado):c.estado]);
+    addSheet('Conciliación', [coHead, ...co], {freezeRow:1, filter:'A1:H'+(co.length+1),
+      cols:[{wch:20},{wch:12},{wch:10},{wch:8},{wch:8},{wch:16},{wch:16},{wch:14}]});
   }
 
-  // 8. Ciclos correctivos
-  if(state.ciclos && state.ciclos.length > 0){
-    const cicRows = state.ciclos.map(c => ({
-      'Folio SIGEM': c.folio, 'N° Inv.': c.inv, 'Estado': c.estado,
-      'Apertura': fmtFecha(c.fechaApertura), 'Cierre': fmtFecha(c.fechaCierre),
-      'Ingeniero asignado': c.ingenieroAsignado||'', 'Descripción inicial': c.descripcionInicial||''
-    }));
-    tabla(cicRows, 'Ciclos correctivos', [{wch:22},{wch:13},{wch:11},{wch:13},{wch:13},{wch:22},{wch:46}]);
-  }
-
-  // 9. Eventos (automáticos) — HOJA OCULTA
-  if(evAuto.length) tabla(evAuto.map(mapEv), 'Eventos (automáticos)', colsEv);
-
-  // Marcar como oculta la hoja de automáticos
-  wb.Workbook = {Sheets: wb.SheetNames.map(n => n === 'Eventos (automáticos)' ? {Hidden:1} : {})};
-
-  const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
-  const blob = new Blob([wbout], {type:'application/octet-stream'});
-  const url = URL.createObjectURL(blob);
-  const a = el('a',{href:url, download:`hhha-export-${hoy}.xlsx`});
+  const wbout=XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  const blob=new Blob([wbout], {type:'application/octet-stream'});
+  const url=URL.createObjectURL(blob);
+  const a=el('a',{href:url, download:'SIGEM_'+hoy+'.xlsx'});
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  const vis = wb.SheetNames.length - (evAuto.length?1:0);
-  toast(`Excel exportado · ${vis} hoja(s)`+(evAuto.length?' + 1 oculta (automáticos)':''),'success');
+  toast('Excel generado · '+wb.SheetNames.length+' hojas','success');
 }
 function importData(){
   const input = el('input',{type:'file',accept:'application/json',style:{display:'none'},onchange:async e=>{
@@ -2075,7 +2039,7 @@ VIEWS.ops=function(root){
     el('div',{class:'row'}, el('b',{}, MESES[month]+' '+year), el('div',{class:'grow'}), pill(pct+'% cumplido', pct>=100?'ok':(pct>=50?'warn':'crit'))),
     el('div',{style:{height:'7px',background:'var(--bg-3)',borderRadius:'5px',overflow:'hidden',margin:'8px 0'}}, el('div',{style:{height:'100%',width:pct+'%',background:pct>=100?'var(--ok)':(pct>=50?'var(--warn)':'var(--crit)')}})),
     el('div',{class:'row', style:{gap:'14px',fontSize:'11.5px',color:'var(--tx-3)'}}, el('span',{},'✔ '+mpEjec.length+' ejecutadas'), el('span',{},'◷ '+mpPend.length+' pendientes'), el('span',{},'⚑ '+mpAtras.length+' atrasadas'))));
-  mpPend.slice(0,6).forEach(e=> mpBody.appendChild(qrow('warn', frag(el('b',{},e.equipo||'—'),' ',el('span',{class:'muted'},e.inv)), (e.servicio||'—')+' · '+(e.freq||'sin freq'), ()=>nuevoEventoMP(e.inv, fechaSugeridaMP(year,month)))));
+  mpPend.slice(0,6).forEach(e=> mpBody.appendChild(qrow('warn', frag(el('b',{},e.equipo||'—'),' ',el('span',{class:'muted'},e.inv)), (e.servicio||'—')+' · '+(e.freq||'sin freq'), ()=>openEquipo(e.inv))));
   if(!mpPend.length) mpBody.appendChild(el('div',{class:'ok-mini'},'✓ MP del mes al día'));
   mpBody.appendChild(el('div',{style:{padding:'9px 13px',borderTop:'1px solid var(--bd)'}},
     el('button',{class:'btn sm primary', onclick:()=>navigate('mp',{mes:NUM_MES[month],year, estadoMP:'pend'})},'⚡ Ejecución masiva del mes →')));
@@ -2401,7 +2365,7 @@ function mpMatrix(eq){
   MESES.forEach((m,i)=>{
     const r=resultadoMPMes(eq, year, i); const prog=mpProgramadaEnMes(eq,m);
     let cls=''; if(r==='Si')cls='ok'; else if(/^C[1-8]$/.test(r||''))cls='warn'; else if(r==='FS'||r==='NU'||r==='No')cls='crit'; else if(r==='Baja')cls='idle';
-    const cell=el('div',{class:'mcell '+cls+(prog&&!r?' prog':''), title:m+' '+year+(r?(' · '+r):(prog?' · programada':'')), onclick:()=>nuevoEventoMP(eq.inv, fechaSugeridaMP(year,i))},
+    const cell=el('div',{class:'mcell '+cls+(prog&&!r?' prog':''), title:m+' '+year+(r?(' · '+r):(prog?' · programada':''))},
       el('span',{class:'mn'}, m), r||(prog?'·':''));
     mx.appendChild(cell);
   });
@@ -2540,7 +2504,6 @@ function nuevoEvento(opts){
   }
   rebuild();
 }
-function nuevoEventoMP(inv, fecha){ nuevoEvento({invDefault:inv, tipoDefault:'Mantención preventiva', fechaDefault:fecha}); }
 function nuevoPendiente(opts){
   opts=opts||{};
   const invInput=el('input',{type:'text', value:opts.invDefault||'', placeholder:'N° de inventario'});
