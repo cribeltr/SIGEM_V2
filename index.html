@@ -210,13 +210,13 @@ table.grid tbody tr.dim td{opacity:.45}
   border-radius:9px;padding:7px 12px;margin-bottom:10px;font-size:12.5px}
 
 /* ===== Drawer (paneles laterales, sin modales) ===== */
-.scrim{position:fixed;inset:0;background:#0009;backdrop-filter:blur(1.5px);opacity:0;transition:.18s;z-index:40}
-.scrim.show{opacity:1}
+.scrim{position:fixed;inset:0;background:#0009;backdrop-filter:blur(1.5px);opacity:0;transition:.18s;z-index:40;pointer-events:none}
+.scrim.show{opacity:1;pointer-events:auto}
 [data-theme="light"] .scrim{background:#1a294d33}
 .drawer{position:fixed;top:0;right:0;height:100vh;width:min(var(--drawer-w),96vw);background:var(--bg-1);
   border-left:1px solid var(--bd-2);box-shadow:var(--sh-pop);z-index:41;display:flex;flex-direction:column;
-  transform:translateX(102%);transition:transform .2s cubic-bezier(.4,0,.2,1)}
-.drawer.show{transform:translateX(0)}
+  transform:translateX(102%);transition:transform .2s cubic-bezier(.4,0,.2,1);pointer-events:none}
+.drawer.show{transform:translateX(0);pointer-events:auto}
 .drawer.wide{width:min(820px,98vw)}
 .dw-hd{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--bd);flex:0 0 auto}
 .dw-hd .t{font-size:15px;font-weight:680;letter-spacing:-.2px}
@@ -287,8 +287,8 @@ table.grid tbody tr.dim td{opacity:.45}
 .cmdk-empty{padding:24px;text-align:center;color:var(--tx-3)}
 
 /* ===== Toasts ===== */
-#toast-root{position:fixed;right:16px;bottom:16px;z-index:80;display:flex;flex-direction:column;gap:8px;max-width:380px}
-.toast{background:var(--bg-2);border:1px solid var(--bd-2);border-left:3px solid var(--accent);border-radius:9px;
+#toast-root{position:fixed;right:16px;bottom:16px;z-index:80;display:flex;flex-direction:column;gap:8px;max-width:380px;pointer-events:none}
+.toast{pointer-events:auto;background:var(--bg-2);border:1px solid var(--bd-2);border-left:3px solid var(--accent);border-radius:9px;
   padding:10px 13px;box-shadow:var(--sh-pop);display:flex;align-items:center;gap:10px;font-size:12.5px;
   animation:tin .2s ease}
 .toast.error{border-left-color:var(--crit)} .toast.success{border-left-color:var(--ok)}
