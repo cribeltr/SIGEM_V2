@@ -2682,7 +2682,7 @@ VIEWS.equipo = function(root, params){
 
   // Eventos creados hoy en este equipo (sin contar anulados)
   const evsHoy = state.eventos.filter(e => e.inv === eq.inv && !e.anulado &&
-    e.ts && new Date(e.ts).toISOString().slice(0,10) === new Date().toISOString().slice(0,10));
+    e.ts && new Date(e.ts).toDateString() === new Date().toDateString());
   const evsHoyBanner = evsHoy.length > 0
     ? el('div',{class:'today-chip', title:'Eventos registrados hoy en este equipo. Click para ir al Historial.',
         onclick:()=>{ secHistorial.open=true; secHistorial.scrollIntoView({behavior:'smooth',block:'start'}); }},
@@ -2864,7 +2864,7 @@ function renderBitacora(eq){
       el('td',{style:{whiteSpace:'nowrap'}}, fmtFecha(ev.fecha),
         ev.ts ? el('small',{class:'muted',style:{display:'block',fontSize:'10px',marginTop:'2px'}}, 'creado '+new Date(ev.ts).toLocaleString('es-CL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})) : null),
       desc,
-      el('td',{}, (ev.tipo==='Mantención preventiva' && ev.resultado ? estadoMPDesdeResultado(ev.resultado) : ev.estado) || el('small',{class:'muted'},'—')),
+      el('td',{}, (ev.tipo==='Mantención preventiva' && ev.resultado ? estadoMPFinal(ev.resultado, ev.estado) : ev.estado) || el('small',{class:'muted'},'—')),
       el('td',{}, ev.ejecutor || el('small',{class:'muted'},'—')),
       el('td',{}, pendsEv.length === 0
         ? el('small',{class:'muted'},'—')
@@ -3748,6 +3748,7 @@ function compararMaestro(parsed, importacionId){
                 ts: new Date().toISOString()
               };
               state.eventos.push(ev);
+              aplicarEfectosEvento(ev);
               audit('evento', ev.id, 'creado_autocompletado', null, 'conciliacion');
               eventosSinteticos++;
             }
@@ -4896,9 +4897,10 @@ function oficializarEvento(ev){
   modal({title:'Oficializar evento', body, footer:[
     el('button',{onclick:closeModal},'Cancelar'),
     el('button',{class:'primary',onclick:()=>{
+      const oficialAntes = ev.oficial || 'No';
       ev.oficial = 'Sí';
       ev.ts = new Date().toISOString();
-      audit('evento',ev.id,'oficial','No','Sí');
+      audit('evento',ev.id,'oficial',oficialAntes,'Sí');
       save();
       closeModal();
       toast('Evento oficializado','success');
@@ -4929,6 +4931,8 @@ function editarEvento(ev){
       audit('evento',ev.id,'fecha',ev.fecha,fecha.value);
       ev.fecha = fecha.value; ev.obs = obs.value; ev.ejecutor = ejecutor.value; ev.oficial = oficial.value;
       ev.ts = new Date().toISOString();
+      // Re-derivar el estado del equipo: al cambiar la fecha puede cambiar el último evento por fecha.
+      { const _eq = findEquipo(ev.inv); if(_eq) recalcEstadoEquipo(_eq); }
       save(); closeModal();
       navigate(currentView,viewParams);
       toast('Evento actualizado','success');
@@ -5047,8 +5051,8 @@ function anularEventoAplicar(ev, motivo){
       }
     }
   }
-  // 5. MP con causal C1-C8: anular pendientes auto generados
-  if(ev.tipo === 'Mantención preventiva' && ev.resultado && /^C[1-8]$/.test(ev.resultado)){
+  // 5. MP con causal C1-C8 o resultado NU: anular pendientes auto ligados por eventoOrigen.
+  if(ev.tipo === 'Mantención preventiva' && ev.resultado){
     const pendsAuto = state.pendientes.filter(p => p.eventoOrigen === ev.id && !p.anulado && p.estado !== 'cerrado');
     pendsAuto.forEach(p => {
       p.anulado = true;
@@ -5144,8 +5148,9 @@ function abrirPendiente(p){
         audit('tarea',t.id,'estado',t.estado==='cerrado'?'abierto':'cerrado',t.estado);
         save();
         // Si todas cerradas → sugerir cerrar pendiente
-        const todasCerradas = state.tareas.filter(x=>x.pendId===p.id).every(x=>x.estado==='cerrado');
-        if(todasCerradas && state.tareas.filter(x=>x.pendId===p.id).length>0 && p.estado!=='cerrado'){
+        const tareasPend = state.tareas.filter(x=>x.pendId===p.id || (p.tareas||[]).includes(x.id));
+        const todasCerradas = tareasPend.length>0 && tareasPend.every(x=>x.estado==='cerrado');
+        if(todasCerradas && p.estado!=='cerrado'){
           if(confirm('Todas las tareas están cerradas. ¿Cerrar el pendiente?')){
             p.estado = 'cerrado'; p.fechaCierre = hoyLocal();
             save(); closeModal(); navigate(currentView,viewParams);
@@ -5260,13 +5265,14 @@ function abrirPendiente(p){
 
 function cerrarPendiente(p){
   const txt = prompt('Comentario de cierre (opcional):');
+  const estadoAntes = p.estado;
   p.estado = 'cerrado';
   p.fechaCierre = hoyLocal();
   if(txt){
     p.seguimientos = p.seguimientos||[];
     p.seguimientos.push({autor:'Cristian',fecha:p.fechaCierre,texto:'Cierre: '+txt});
   }
-  audit('pendiente',p.id,'estado','abierto','cerrado');
+  audit('pendiente',p.id,'estado',estadoAntes,'cerrado');
   save();
   navigate(currentView,viewParams);
   toast('Pendiente cerrado','success');
@@ -5296,7 +5302,8 @@ function darDeBaja(eq){
   // Marcar en registro mes actual
   const mes = NUM_MES[new Date().getMonth()];
   eq.registro = eq.registro||{};
-  eq.registro[mes] = {R:'Baja'};
+  eq.registro[mes] = eq.registro[mes] || {};
+  eq.registro[mes].R = 'Baja';
   // Limpiar meses posteriores
   for(let i=new Date().getMonth()+1; i<12; i++){
     if(eq.registro[NUM_MES[i]]) delete eq.registro[NUM_MES[i]];
