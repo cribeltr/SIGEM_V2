@@ -1982,13 +1982,11 @@ function navBack(fallback){
 VIEWS.dashboard = function(root){
   const today = new Date();
   const year = today.getFullYear(), month = today.getMonth();
-  const mesActual = NUM_MES[month];
   state.equipos.forEach(recalcEstadoEquipo);
 
   const opCount = state.equipos.filter(e=>e.estado==='operativo').length;
   const noopCount = state.equipos.filter(e=>e.estado==='no_operativo').length;
   const stCount = state.equipos.filter(e=>e.estado==='en_servicio_tecnico').length;
-  const bajaCount = state.equipos.filter(e=>e.estado==='baja').length;
   const alertaDias = state.equipos.filter(e => ['no_operativo','en_servicio_tecnico'].includes(e.estado) && diasEnEstado(e) > 30);
   const pendAbiertos = state.pendientes.filter(p => !p.anulado && p.estado !== 'cerrado');
   const ciclosAbiertos = state.ciclos.filter(c => c.estado === 'abierto');
@@ -2151,7 +2149,6 @@ function renderSumMPAnual(year){
 // ====== Tabla resumen: equipos por servicio × estado ======
 function renderSumServicios(){
   const servicios = [...new Set(state.equipos.map(e=>e.servicio).filter(Boolean))].sort();
-  const today = hoyLocal();
   const rows = servicios.map(s => {
     const eqs = state.equipos.filter(e => e.servicio === s);
     const op = eqs.filter(e => e.estado === 'operativo').length;
@@ -3072,7 +3069,7 @@ function renderConflictosEquipo(eq, refresh){
       ));
     }
     card.appendChild(el('div',{class:'conf-actions'},
-      el('button',{class:'primary small',onclick:()=>{const r=resolverConflicto(c,'aceptar_maestro');refresh();}},'✓ Aceptar maestro'),
+      el('button',{class:'primary small',onclick:()=>{resolverConflicto(c,'aceptar_maestro');refresh();}},'✓ Aceptar maestro'),
       el('button',{class:'small',onclick:()=>{resolverConflicto(c,'mantener_programa');refresh();}},'✗ Mantener programa'),
       el('button',{class:'small ghost',onclick:()=>{resolverConflicto(c,'posponer');refresh();}},'⏸ Posponer')
     ));
@@ -4845,7 +4842,7 @@ function nuevoEvento(opts){
   }
 
   function rebuild(){
-    const m = modal({title:'Nuevo evento', wide:true, body: build(),
+    modal({title:'Nuevo evento', wide:true, body: build(),
       hasUnsavedData: ()=>{
         // Hay cambios si el usuario seleccionó tipo o llenó algún input visible
         if(tipo) return true;
@@ -5414,7 +5411,6 @@ function descargarPlantillaMP(year, monthIdx){
 
   // Validación de datos en la columna Responsable (drop-down referenciando la otra hoja)
   // Aplicar a M2:M(equipos.length+1) — columna 12 (índice 0-based)
-  const lastRow = equipos.length + 1;
   ws['!dataValidation'] = ws['!dataValidation'] || [];
   // Nota: openpyxl-equivalente no aplica drop-down directamente vía aoa_to_sheet.
   // El usuario aún podrá escribir nombres, y el upload validará contra el catálogo.
