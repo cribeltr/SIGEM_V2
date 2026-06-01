@@ -2175,7 +2175,6 @@ VIEWS.mp=function(root, params){
       {key:'res',label:'Resultado',get:e=>mpResBadge(resultadoMPMes(e,year,monthIdx))},
       {key:'estadoMP',label:'Estado MP',get:e=>{ const s=mpEstadoMes(e,year,monthIdx); const m={ejecutada:['ok','Ejecutada'],reprogramada:['warn','Reprogramada'],otro:['idle','Otro'],pendiente:['crit','Pendiente']}[s]; return el('span',{class:'badge nodot '+m[0]},m[1]); }, sort:e=>mpEstadoMes(e,year,monthIdx)},
       {key:'ejec',label:'Ejecutor asignado',get:e=>{ const sel=selectEl([{v:'',t:'— sin asignar —'},...EJECUTORES.map(x=>({v:x,t:x}))], state.asignacionesMP[keyMes][e.inv]||''); sel.onclick=ev=>ev.stopPropagation(); sel.onchange=ev=>{ state.asignacionesMP[keyMes][e.inv]=sel.value||null; save(); }; return sel; }, sortable:false},
-      {key:'act',label:'',sortable:false,get:e=>el('button',{class:'btn sm primary', onclick:ev=>{ev.stopPropagation(); nuevoEventoMP(e.inv, fechaSugeridaMP(year,monthIdx));}},'➕ MP')},
     ],
     bulkActions:(selInvs, clear)=>[
       el('button',{class:'btn sm primary', onclick:()=>{ clear(); mpMasivaDrawer(selInvs, year, monthIdx); }},'⚡ Registrar MP a '+selInvs.length),
