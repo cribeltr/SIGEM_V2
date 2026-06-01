@@ -282,6 +282,18 @@ table.grid tbody tr.dim td{opacity:.5}
 .flash{animation:flash 1.2s ease}
 @keyframes flash{0%,100%{background:transparent}30%{background:var(--accent-bg)}}
 
+
+/* ===== Pulido v1.1 ===== */
+.view>*{animation:viewin .22s cubic-bezier(.22,.61,.36,1)}
+@keyframes viewin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+table.grid tbody tr{cursor:pointer}
+table.grid tbody tr:hover td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+table.grid tbody tr.row-crit td:first-child{box-shadow:inset 3px 0 0 var(--crit)}
+table.grid tbody tr.row-warn td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rail-btn:focus-visible{outline-offset:-2px}
+.stat:active{transform:none}
+.dw-hd .t{display:flex;align-items:center;gap:8px}
 </style>
 </head>
 <body data-theme="light">
@@ -1905,6 +1917,7 @@ function cmdkActions(){
     {sec:'Acción', ic:'📊', t:'Exportar a Excel', fn:()=>exportExcel()},
     {sec:'Acción', ic:'💾', t:'Descargar backup JSON', fn:()=>exportData()},
     {sec:'Acción', ic:'📥', t:'Importar backup', fn:()=>importData()},
+    {sec:'Acción', ic:'⌨', t:'Atajos de teclado', sub:'?', fn:()=>helpShortcuts()},
     {sec:'Acción', ic:'🌓', t:'Cambiar tema claro/oscuro', fn:()=>toggleTheme()},
   ];
 }
@@ -2077,7 +2090,7 @@ VIEWS.ops=function(root){
   pendAb.slice().sort((a,b)=>(a.fechaComp||'9999').localeCompare(b.fechaComp||'9999')).slice(0,8).forEach(p=>{
     const venc=p.fechaComp&&p.fechaComp<hoy;
     pendBody.appendChild(qrow(venc?'crit':(p.estado==='en_proceso'?'warn':''), frag(el('b',{}, TIPO_PENDIENTE[p.tipo]||p.tipo),' ',el('span',{class:'muted'}, p.inv||'')),
-      (p.fechaComp?('vence '+fmtFecha(p.fechaComp)):'sin fecha'), ()=>abrirPendiente(p)));
+      (p.ejecutor?(p.ejecutor.split(' ')[0]+' · '):'')+(p.fechaComp?('vence '+fmtFecha(p.fechaComp)):'sin fecha'), ()=>abrirPendiente(p)));
   });
   if(!pendAb.length) pendBody.appendChild(el('div',{class:'ok-mini'},'✓ Sin pendientes abiertos'));
   grid.appendChild(panel('Pendientes por resolver','✔', pendAb.length, pendBody));
@@ -2204,7 +2217,7 @@ VIEWS.pendientes=function(root, params){
   dataTable({
     rows:list, onRow:p=>abrirPendiente(p),
     searchPh:'Buscar pendiente por equipo, descripción, tipo…',
-    rowClass:p=>(p.fechaComp&&p.fechaComp<hoy&&p.estado!=='cerrado')?'':'',
+    rowClass:p=>(p.fechaComp&&p.fechaComp<hoy&&p.estado!=='cerrado')?'row-crit':(p.estado==='en_proceso'?'row-warn':''),
     toolbar:[seg, el('button',{class:'btn sm', onclick:()=>nuevoPendiente({})},'➕ Pendiente')],
     columns:[
       {key:'estado',label:'Estado',get:p=>pendBadge(p.estado),sort:p=>p.estado},
@@ -2666,6 +2679,13 @@ function mpMasivaDrawer(invs, year, monthIdx){
    TECLADO GLOBAL
    ============================================================ */
 function inField(){ const a=document.activeElement; return a&&['INPUT','TEXTAREA','SELECT'].includes(a.tagName); }
+function helpShortcuts(){
+  const rows=[['⌘ K','Paleta de comandos'],['/','Buscar equipo'],['J','Bajar en la lista'],['K','Subir en la lista'],['↵','Abrir lo enfocado'],['Esc','Cerrar panel / paleta'],['C','Nuevo evento'],['P','Nuevo pendiente'],['?','Esta ayuda']];
+  openDrawer({id:'help', title:'⌨ Atajos de teclado',
+    body:()=>el('div',{}, el('div',{class:'muted',style:{fontSize:'12px',marginBottom:'14px'}},'SIGEM está pensado para operar casi sin mouse.'),
+      ...rows.map(([k,d])=>el('div',{class:'kv'}, el('span',{class:'k'},d), el('span',{style:{display:'flex',gap:'4px'}}, ...k.split(' ').map(t=>el('kbd',{},t)))))),
+    footer:()=>el('button',{class:'btn primary',onclick:closeDrawer},'Entendido')});
+}
 document.addEventListener('keydown', e=>{
   const cmdkOpen=document.getElementById('cmdk').classList.contains('show');
   if((e.ctrlKey||e.metaKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); cmdkOpen?closeCmdk():openCmdk(); return; }
@@ -2680,6 +2700,7 @@ document.addEventListener('keydown', e=>{
   else if(e.key==='Enter'){ if(t){ e.preventDefault(); t.openFocused(); } }
   else if(e.key==='c'){ nuevoEvento({}); }
   else if(e.key==='p'){ nuevoPendiente({}); }
+  else if(e.key==='?'){ helpShortcuts(); }
 });
 
 /* ============================================================
