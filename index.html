@@ -2077,7 +2077,7 @@ VIEWS.ops=function(root){
     el('div',{class:'row'}, el('b',{}, MESES[month]+' '+year), el('div',{class:'grow'}), pill(pct+'% cumplido', pct>=100?'ok':(pct>=50?'warn':'crit'))),
     el('div',{style:{height:'7px',background:'var(--bg-3)',borderRadius:'5px',overflow:'hidden',margin:'8px 0'}}, el('div',{style:{height:'100%',width:pct+'%',background:pct>=100?'var(--ok)':(pct>=50?'var(--warn)':'var(--crit)')}})),
     el('div',{class:'row', style:{gap:'14px',fontSize:'11.5px',color:'var(--tx-3)'}}, el('span',{},'✔ '+mpEjec.length+' ejecutadas'), el('span',{},'◷ '+mpPend.length+' pendientes'), el('span',{},'⚑ '+mpAtras.length+' atrasadas'))));
-  mpPend.slice(0,6).forEach(e=> mpBody.appendChild(qrow('warn', frag(el('b',{},e.equipo||'—'),' ',el('span',{class:'muted'},e.inv)), e.servicio||'', ()=>nuevoEventoMP(e.inv, fechaSugeridaMP(year,month)))));
+  mpPend.slice(0,6).forEach(e=> mpBody.appendChild(qrow('warn', frag(el('b',{},e.equipo||'—'),' ',el('span',{class:'muted'},e.inv)), (e.servicio||'—')+' · '+(e.freq||'sin freq'), ()=>nuevoEventoMP(e.inv, fechaSugeridaMP(year,month)))));
   if(!mpPend.length) mpBody.appendChild(el('div',{class:'ok-mini'},'✓ MP del mes al día'));
   mpBody.appendChild(el('div',{style:{padding:'9px 13px',borderTop:'1px solid var(--bd)'}},
     el('button',{class:'btn sm primary', onclick:()=>navigate('mp',{mes:NUM_MES[month],year, estadoMP:'pend'})},'⚡ Ejecución masiva del mes →')));
@@ -2130,6 +2130,7 @@ VIEWS.equipos=function(root, params){
       {key:'marca', label:'Marca / Modelo', get:e=>frag(e.marca||'—',el('br'),el('small',{class:'muted'},e.modelo||''))},
       {key:'serie', label:'Serie', get:e=>el('span',{class:'mono'}, e.serie||'—')},
       {key:'servicio', label:'Servicio', get:e=>frag(e.servicio||'—',el('br'),el('small',{class:'muted'},e.unidad||''))},
+      {key:'freq', label:'Freq MP', get:e=>e.freq?el('span',{class:'tag'},e.freq):el('span',{class:'muted'},'—'), sort:e=>e.freq||''},
       {key:'estado', label:'Estado', get:e=>frag(estadoBadge(e.estado), (['no_operativo','en_servicio_tecnico'].includes(e.estado))?el('div',{style:{marginTop:'3px'}}, el('small',{class:'muted'}, diasEnEstado(e)+'d · '+(encargadoDe(e)||'—'))):null), sort:e=>e.estado},
       {key:'pend', label:'Pend.', cls:'right', get:e=>{ const n=pendientesDe(e.inv).filter(p=>p.estado!=='cerrado').length; return n?pill(n,'warn'):el('span',{class:'muted'},'0'); }, sort:e=>pendientesDe(e.inv).filter(p=>p.estado!=='cerrado').length},
     ],
@@ -2171,6 +2172,7 @@ VIEWS.mp=function(root, params){
       {key:'inv',label:'N° Inv.',get:e=>el('span',{class:'cell-id'},e.inv)},
       {key:'equipo',label:'Equipo',get:e=>el('span',{class:'cell-strong'},e.equipo)},
       {key:'servicio',label:'Servicio',get:e=>frag(e.servicio||'—',el('br'),el('small',{class:'muted'},e.unidad||''))},
+      {key:'freq',label:'Freq',get:e=>e.freq?el('span',{class:'tag'},e.freq):el('span',{class:'muted'},'—'),sort:e=>e.freq||''},
       {key:'prog',label:'Prog.',get:e=>el('span',{class:'mono'},(e.registro&&e.registro[NUM_MES[monthIdx]]&&e.registro[NUM_MES[monthIdx]].P)||(e.prog||{})[NUM_MES[monthIdx]]||'—')},
       {key:'res',label:'Resultado',get:e=>mpResBadge(resultadoMPMes(e,year,monthIdx))},
       {key:'estadoMP',label:'Estado MP',get:e=>{ const s=mpEstadoMes(e,year,monthIdx); const m={ejecutada:['ok','Ejecutada'],reprogramada:['warn','Reprogramada'],otro:['idle','Otro'],pendiente:['crit','Pendiente']}[s]; return el('span',{class:'badge nodot '+m[0]},m[1]); }, sort:e=>mpEstadoMes(e,year,monthIdx)},
